@@ -1,0 +1,2046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetOps Console — Ticket Management System</title>
+<style>
+  :root{
+    --bg:#0B1220;
+    --surface:#121A2B;
+    --surface-2:#1A2438;
+    --surface-3:#212C45;
+    --border:#26334D;
+    --text:#E8EDF7;
+    --text-muted:#8A96AD;
+    --text-faint:#5C6884;
+    --accent:#3DDC97;
+    --accent-dim:#1F6B4C;
+    --pending:#F5A623;
+    --start:#4C8DFF;
+    --close:#3DDC97;
+    --danger:#FF5D5D;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --radius: 10px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background: radial-gradient(1200px 800px at 10% -10%, #101c33 0%, var(--bg) 45%), var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  ::selection{ background:var(--accent-dim); color:#fff; }
+  button{ font-family:inherit; cursor:pointer; }
+  input, select, textarea{ font-family:inherit; }
+
+  /* ---------- Utility ---------- */
+  .hidden{ display:none !important; }
+  .mono{ font-family:var(--mono); letter-spacing:0.5px; }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600;
+    letter-spacing:0.3px; text-transform:uppercase;
+  }
+  .badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .badge.pending{ background:rgba(245,166,35,0.12); color:var(--pending); }
+  .badge.start{ background:rgba(76,141,255,0.12); color:var(--start); }
+  .badge.close{ background:rgba(61,220,151,0.12); color:var(--close); }
+
+  /* ---------- Login ---------- */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    position:relative; overflow:hidden;
+  }
+  #login-screen::before{
+    content:""; position:absolute; inset:0; opacity:0.5;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size:42px 42px;
+    mask-image: radial-gradient(circle at 50% 40%, black, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle at 50% 40%, black, transparent 70%);
+  }
+  .login-card{
+    position:relative; z-index:1;
+    width:380px; max-width:90vw;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:36px 32px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  }
+  .login-mark{
+    display:flex; align-items:center; gap:10px; margin-bottom:24px;
+  }
+  .login-mark .dot{ width:10px; height:10px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px var(--accent);}
+  .login-mark span{ font-weight:700; letter-spacing:1px; font-size:14px; color:var(--text-muted); text-transform:uppercase; }
+  .login-card h1{ font-size:22px; font-weight:700; margin-bottom:4px; }
+  .login-card p.sub{ color:var(--text-muted); font-size:13px; margin-bottom:26px; }
+  .field{ margin-bottom:16px; }
+  .field label{ display:block; font-size:12px; color:var(--text-muted); margin-bottom:6px; font-weight:600; letter-spacing:0.3px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); padding:10px 12px; border-radius:8px; font-size:14px;
+    outline:none; transition:border-color .15s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--accent); }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    background:var(--accent); color:#06231A; border:none; font-weight:700;
+    padding:11px 18px; border-radius:8px; font-size:14px; transition:filter .12s, transform .12s;
+  }
+  .btn:hover{ filter:brightness(1.08); }
+  .btn:active{ transform:scale(0.98); }
+  .btn.block{ width:100%; }
+  .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--border); }
+  .btn.ghost:hover{ background:var(--surface-2); }
+  .btn.danger{ background:var(--danger); color:#2B0000; }
+  #login-error{ color:var(--danger); font-size:13px; margin-top:10px; min-height:16px; }
+
+  /* ---------- App Shell ---------- */
+  #app{ display:none; min-height:100vh; }
+  #app.active{ display:flex; }
+  .sidebar{
+    width:230px; flex-shrink:0; background:var(--surface);
+    border-right:1px solid var(--border); display:flex; flex-direction:column;
+    padding:22px 16px;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; padding:0 8px 22px 8px; border-bottom:1px solid var(--border); margin-bottom:18px;}
+  .brand .dot{ width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 10px var(--accent);}
+  .brand-text .t1{ font-weight:700; font-size:14px; letter-spacing:0.4px; }
+  .brand-text .t2{ font-size:11px; color:var(--text-faint); letter-spacing:0.5px; }
+  nav.navlist{ display:flex; flex-direction:column; gap:4px; flex:1; }
+  .navitem{
+    display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:8px;
+    color:var(--text-muted); font-size:14px; font-weight:600; border:none; background:transparent;
+    text-align:left; width:100%; transition:background .12s, color .12s;
+  }
+  .navitem svg{ width:17px; height:17px; flex-shrink:0; opacity:0.85; }
+  .navitem:hover{ background:var(--surface-2); color:var(--text); }
+  .navitem.active{ background:var(--surface-3); color:var(--accent); }
+  .navitem.active svg{ opacity:1; }
+  .sidebar-footer{ border-top:1px solid var(--border); padding-top:14px; margin-top:10px; }
+  .who{ display:flex; align-items:center; gap:10px; padding:6px 8px 12px 8px; }
+  .avatar{ width:32px; height:32px; border-radius:8px; background:var(--surface-3); display:flex; align-items:center; justify-content:center; font-weight:700; color:var(--accent); font-size:13px; }
+  .who .name{ font-size:13px; font-weight:700; }
+  .who .role{ font-size:11px; color:var(--text-faint); }
+
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 32px; border-bottom:1px solid var(--border);
+  }
+  .topbar h2{ font-size:19px; font-weight:700; }
+  .topbar .tsub{ font-size:12px; color:var(--text-faint); margin-top:2px; }
+  .topbar-right{ display:flex; align-items:center; gap:14px; font-size:12px; color:var(--text-muted); }
+  .live-clock{ font-family:var(--mono); color:var(--text-muted); font-size:12px; }
+
+  .content{ padding:28px 32px 60px 32px; flex:1; overflow-y:auto; }
+  .section{ display:none; }
+  .section.active{ display:block; }
+
+  /* ---------- Dashboard ---------- */
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:22px; }
+  .stat-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 20px; position:relative; overflow:hidden;
+  }
+  .stat-card .accent-bar{ position:absolute; left:0; top:0; bottom:0; width:3px; }
+  .stat-card .label{ font-size:12px; color:var(--text-muted); font-weight:600; letter-spacing:0.3px; margin-bottom:8px; }
+  .stat-card .value{ font-size:30px; font-weight:700; font-family:var(--mono); }
+  .stat-card .sub{ font-size:11px; color:var(--text-faint); margin-top:6px; }
+
+  .grid-2{ display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin-bottom:22px; align-items:stretch; }
+  .panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+  .panel h3{ font-size:14px; font-weight:700; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; }
+  .panel h3 .tag{ font-size:11px; color:var(--text-faint); font-weight:600; }
+
+  .bars{ display:flex; align-items:flex-end; gap:10px; height:150px; padding-top:10px; }
+  .bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:8px;}
+  .bar-col .bar{ width:60%; background:var(--surface-3); border-radius:4px 4px 0 0; position:relative; min-height:2px; transition:height .4s; }
+  .bar-col .bar-val{ font-size:11px; color:var(--text-muted); font-family:var(--mono); }
+  .bar-col .bar-label{ font-size:10px; color:var(--text-faint); }
+
+  .donut-wrap{ display:flex; align-items:center; gap:20px; }
+  .legend{ display:flex; flex-direction:column; gap:10px; font-size:12px; }
+  .legend .row{ display:flex; align-items:center; gap:8px; color:var(--text-muted); }
+  .legend .sw{ width:9px; height:9px; border-radius:2px; }
+  .legend .num{ margin-left:auto; font-family:var(--mono); color:var(--text); font-weight:600; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  thead th{
+    text-align:left; color:var(--text-faint); font-weight:600; font-size:11px;
+    text-transform:uppercase; letter-spacing:0.4px; padding:8px 10px; border-bottom:1px solid var(--border);
+  }
+  tbody td{ padding:10px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; }
+  tbody tr:hover{ background:var(--surface-2); }
+  tbody tr:last-child td{ border-bottom:none; }
+  .empty-row td{ text-align:center; color:var(--text-faint); padding:26px 10px; }
+
+  /* ---------- Forms ---------- */
+  .form-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:26px; max-width:900px; }
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px 20px; }
+  .form-grid .full{ grid-column:1 / -1; }
+  .ticket-id-box{
+    display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px dashed var(--border);
+    border-radius:8px; padding:12px 16px; margin-bottom:20px;
+  }
+  .ticket-id-box .lab{ font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.5px; }
+  .ticket-id-box .val{ font-family:var(--mono); font-size:18px; font-weight:700; color:var(--accent); }
+  .form-actions{ display:flex; gap:10px; margin-top:22px; }
+  textarea{ resize:vertical; min-height:90px; }
+  .status-pill-select{ display:flex; gap:8px; }
+  .status-pill-select label{ flex:1; }
+  .status-pill-select input{ display:none; }
+  .status-pill-select .pill{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    border:1px solid var(--border); border-radius:8px; padding:10px 6px; font-size:12px;
+    font-weight:700; color:var(--text-muted); cursor:pointer; text-transform:uppercase; letter-spacing:0.3px;
+  }
+  .status-pill-select input:checked + .pill{ border-color:currentColor; }
+  .status-pill-select .pill.pending{ color:var(--pending); }
+  .status-pill-select .pill.start{ color:var(--start); }
+  .status-pill-select .pill.close{ color:var(--close); }
+  .status-pill-select input:checked + .pill.pending{ background:rgba(245,166,35,0.1); }
+  .status-pill-select input:checked + .pill.start{ background:rgba(76,141,255,0.1); }
+  .status-pill-select input:checked + .pill.close{ background:rgba(61,220,151,0.1); }
+  .toast{
+    position:fixed; bottom:24px; right:24px; background:var(--surface-3); border:1px solid var(--accent);
+    color:var(--text); padding:13px 20px; border-radius:8px; font-size:13px; font-weight:600;
+    box-shadow:0 10px 30px rgba(0,0,0,0.4); z-index:999; display:flex; align-items:center; gap:10px;
+    transform:translateY(20px); opacity:0; transition:all .25s;
+  }
+  .toast.show{ transform:translateY(0); opacity:1; }
+
+  /* ---------- Search ---------- */
+  .search-bar{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-bottom:20px; }
+  .search-row{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:14px; }
+  .status-tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .status-tab{
+    padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:transparent;
+    color:var(--text-muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;
+  }
+  .status-tab.active{ background:var(--accent); color:#06231A; border-color:var(--accent); }
+  .results-panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; overflow-x:auto; }
+  .ticket-detail-btn{ background:transparent; border:1px solid var(--border); color:var(--accent); padding:5px 10px; font-size:11px; border-radius:6px; font-weight:700; }
+  .ticket-detail-btn:hover{ background:var(--surface-2); }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(4,8,16,0.7); display:flex; align-items:center; justify-content:center;
+    z-index:1000; padding:20px;
+  }
+  .modal{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    max-width:560px; width:100%; padding:26px; max-height:85vh; overflow-y:auto;
+  }
+  .modal h3{ font-size:16px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; }
+  .modal .close-x{ background:transparent; border:none; color:var(--text-faint); font-size:20px; line-height:1; }
+  .detail-row{ display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); font-size:13px; gap:12px; }
+  .detail-row .k{ color:var(--text-faint); flex-shrink:0; }
+  .detail-row .v{ text-align:right; color:var(--text); }
+  .detail-row.block{ flex-direction:column; text-align:left; }
+  .detail-row.block .v{ text-align:left; margin-top:6px; color:var(--text-muted); line-height:1.5; }
+
+  /* ---------- Resolve ---------- */
+  .resolve-lookup{ display:flex; gap:10px; margin-bottom:20px; max-width:900px; }
+  .resolve-lookup input{ flex:1; }
+  .open-tickets-hint{ font-size:12px; color:var(--text-faint); margin-bottom:8px; }
+  .chip-list{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .chip{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:6px 10px;
+    font-size:11px; font-family:var(--mono); color:var(--text-muted); cursor:pointer;
+  }
+  .chip:hover{ border-color:var(--accent); color:var(--accent); }
+
+  /* ---------- Row action buttons ---------- */
+  .row-actions{ display:flex; gap:6px; flex-wrap:nowrap; }
+  .icon-btn{
+    background:transparent; border:1px solid var(--border); color:var(--text-muted);
+    padding:5px 9px; font-size:11px; border-radius:6px; font-weight:700; white-space:nowrap;
+  }
+  .icon-btn:hover{ background:var(--surface-2); color:var(--text); }
+  .icon-btn.edit:hover{ color:var(--start); border-color:var(--start); }
+  .icon-btn.print:hover{ color:var(--accent); border-color:var(--accent); }
+  .icon-btn.delete:hover{ color:var(--danger); border-color:var(--danger); }
+
+  /* ---------- Report ---------- */
+  .report-filter-tabs{ display:flex; gap:8px; margin-bottom:16px; }
+  .rf-tab{
+    padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:transparent;
+    color:var(--text-muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px;
+  }
+  .rf-tab.active{ background:var(--accent); color:#06231A; border-color:var(--accent); }
+  .report-controls-row{ display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin-bottom:18px; }
+  .report-controls-row .field{ margin-bottom:0; min-width:180px; }
+  .report-summary-strip{ display:flex; gap:24px; margin-bottom:18px; }
+  .report-summary-strip .rs-item{ font-size:12px; color:var(--text-muted); }
+  .report-summary-strip .rs-item b{ display:block; font-size:20px; color:var(--text); font-family:var(--mono); }
+
+  /* ---------- Closed ticket history (Resolve page) ---------- */
+  .history-panel{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; margin-top:28px; }
+  .history-search{ display:flex; gap:10px; margin-bottom:16px; max-width:600px; }
+  .readonly-toggle{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .readonly-toggle .edit-link{ background:transparent; border:none; color:var(--start); font-size:11px; font-weight:700; text-decoration:underline; }
+  textarea[readonly]{ opacity:0.65; cursor:not-allowed; }
+
+  /* ---------- Print / Letterhead (screen hidden, used only for window.print) ---------- */
+  #print-area{ display:none; }
+  @media print{
+    body *{ visibility:hidden; }
+    #print-area, #print-area *{ visibility:visible; }
+    #print-area{ display:block; position:absolute; left:0; top:0; width:100%; padding:10mm; }
+  }
+  .letterhead{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    border-bottom:3px solid #0B1220; padding-bottom:14px; margin-bottom:18px; color:#111;
+  }
+  .letterhead .company h1{ font-size:22px; font-weight:800; letter-spacing:0.5px; color:#0B1220; }
+  .letterhead .company p{ font-size:11.5px; color:#333; margin-top:3px; line-height:1.5; }
+  .letterhead .engineer{ text-align:right; font-size:11.5px; color:#333; line-height:1.6; }
+  .letterhead .engineer .nm{ font-weight:700; color:#0B1220; font-size:13px; }
+  .print-doc-title{ font-size:17px; font-weight:800; margin:14px 0 2px 0; color:#0B1220; }
+  .print-meta-line{ font-size:11px; color:#555; margin-bottom:16px; }
+  .print-table{ width:100%; border-collapse:collapse; font-size:11.5px; color:#111; }
+  .print-table th, .print-table td{ border:1px solid #999; padding:7px 9px; text-align:left; }
+  .print-table th{ background:#eee; text-transform:uppercase; font-size:10px; letter-spacing:0.3px; }
+  .print-kv{ width:100%; border-collapse:collapse; font-size:12.5px; color:#111; margin-bottom:16px; }
+  .print-kv td{ padding:7px 4px; border-bottom:1px solid #ddd; vertical-align:top; }
+  .print-kv td.k{ color:#555; width:170px; font-weight:600; }
+  .print-block-title{ font-size:12.5px; font-weight:700; color:#0B1220; margin:14px 0 4px 0; text-transform:uppercase; letter-spacing:0.4px; }
+  .print-block-text{ font-size:12px; color:#222; line-height:1.55; white-space:pre-wrap; margin-bottom:10px; }
+  .print-footer{ margin-top:24px; font-size:10.5px; color:#666; border-top:1px solid #ccc; padding-top:10px; }
+  .print-status-badge{ display:inline-block; padding:2px 10px; border-radius:12px; font-size:10px; font-weight:700; text-transform:uppercase; border:1px solid #999; }
+
+  /* ---------- Previous ticket linking (Add Ticket page) ---------- */
+  .prev-suggest-chip{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:7px 11px;
+    font-size:11.5px; color:var(--text-muted); cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  }
+  .prev-suggest-chip:hover{ border-color:var(--accent); color:var(--accent); }
+  .linked-banner{
+    display:flex; align-items:center; gap:10px; background:rgba(61,220,151,0.08); border:1px solid var(--accent-dim);
+    border-radius:8px; padding:10px 14px; font-size:12.5px; color:var(--accent); margin-top:8px;
+  }
+
+  /* ---------- Client History page ---------- */
+  .ref-tag{ font-size:11px; color:var(--text-faint); font-family:var(--mono); }
+  .chd-section-title{ font-size:13px; font-weight:700; margin:22px 0 10px 0; padding-top:16px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .timeline-strip{ display:flex; flex-wrap:wrap; gap:8px; }
+  .timeline-chip{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:6px 10px;
+    font-size:11px; color:var(--text-muted); cursor:pointer;
+  }
+  .timeline-chip:hover{ border-color:var(--accent); color:var(--accent); }
+  .timeline-chip.current{ border-color:var(--accent); color:var(--accent); background:rgba(61,220,151,0.08); }
+  .upload-row{ display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+  .upload-label{
+    display:inline-flex; align-items:center; gap:8px; background:var(--surface-2); border:1px dashed var(--border);
+    border-radius:8px; padding:9px 14px; font-size:12px; font-weight:600; color:var(--text-muted); cursor:pointer;
+  }
+  .upload-label:hover{ border-color:var(--accent); color:var(--accent); }
+  .upload-label input{ display:none; }
+  .shot-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(110px,1fr)); gap:10px; margin-top:6px; }
+  .shot-card{ position:relative; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface-2); }
+  .shot-card img{ width:100%; height:90px; object-fit:cover; display:block; cursor:pointer; }
+  .shot-card .shot-name{ font-size:10px; color:var(--text-faint); padding:5px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .shot-card .shot-del{
+    position:absolute; top:4px; right:4px; background:rgba(0,0,0,0.6); color:#fff; border:none;
+    width:20px; height:20px; border-radius:5px; font-size:12px; line-height:1;
+  }
+  .voice-item{
+    display:flex; align-items:center; gap:12px; background:var(--surface-2); border:1px solid var(--border);
+    border-radius:8px; padding:8px 12px; margin-bottom:8px; flex-wrap:wrap;
+  }
+  .voice-item .vname{ font-size:12px; color:var(--text-muted); min-width:120px; }
+  .voice-item audio{ height:32px; flex:1; min-width:180px; }
+  .no-attach{ font-size:12px; color:var(--text-faint); font-style:italic; }
+  .lightbox-overlay{
+    position:fixed; inset:0; background:rgba(4,8,16,0.85); z-index:1100; display:flex; align-items:center; justify-content:center; padding:30px;
+  }
+  .lightbox-overlay img{ max-width:100%; max-height:100%; border-radius:8px; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+
+  /* ---------- Paste-to-add screenshot ---------- */
+  .paste-zone{
+    display:flex; align-items:center; gap:8px; border:1px dashed var(--border); border-radius:8px;
+    padding:9px 14px; font-size:12px; color:var(--text-faint); background:var(--surface-2);
+  }
+  .paste-zone kbd{
+    background:var(--surface-3); border:1px solid var(--border); border-radius:4px; padding:1px 6px;
+    font-family:var(--mono); font-size:11px; color:var(--text-muted);
+  }
+
+  /* ---------- Logs page ---------- */
+  .log-badge{
+    display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:700; letter-spacing:0.2px; white-space:nowrap;
+  }
+  .log-badge::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .log-details{ font-size:12px; color:var(--text-muted); max-width:340px; }
+  .log-time{ font-family:var(--mono); font-size:11.5px; color:var(--text-muted); white-space:nowrap; }
+
+  @media (max-width: 980px){
+    .stat-grid{ grid-template-columns:repeat(2,1fr); }
+    .grid-2{ grid-template-columns:1fr; }
+    .form-grid{ grid-template-columns:1fr; }
+    .search-row{ grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width: 640px){
+    #app.active{ flex-direction:column; }
+    .sidebar{ width:100%; flex-direction:row; align-items:center; padding:10px 12px; overflow-x:auto; }
+    .brand{ display:none; }
+    nav.navlist{ flex-direction:row; }
+    .sidebar-footer{ display:none; }
+    .content{ padding:18px; }
+    .topbar{ padding:16px 18px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-mark"><span class="dot"></span><span>NetOps Console</span></div>
+    <h1>Sign in</h1>
+    <p class="sub">Network Support Engineer — Ticket Management System</p>
+    <form id="login-form">
+      <div class="field">
+        <label for="login-user">Username</label>
+        <input type="text" id="login-user" autocomplete="username" placeholder="Enter username" required>
+      </div>
+      <div class="field">
+        <label for="login-pass">Password</label>
+        <input type="password" id="login-pass" autocomplete="current-password" placeholder="Enter password" required>
+      </div>
+      <button type="submit" class="btn block">Sign in to console</button>
+      <div id="login-error"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div class="brand-text">
+        <div class="t1">NetOps Console</div>
+        <div class="t2">TICKET SYSTEM</div>
+      </div>
+    </div>
+    <nav class="navlist">
+      <button class="navitem" data-section="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Dashboard
+      </button>
+      <button class="navitem" data-section="add">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Add Ticket
+      </button>
+      <button class="navitem" data-section="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        Search Ticket
+      </button>
+      <button class="navitem" data-section="resolve">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+        Resolve Issue
+      </button>
+      <button class="navitem" data-section="report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+        Report
+      </button>
+      <button class="navitem" data-section="history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        Client History
+      </button>
+      <button class="navitem" data-section="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg>
+        Logs
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="who">
+        <div class="avatar">M</div>
+        <div>
+          <div class="name">Manan</div>
+          <div class="role">Network Support Engineer</div>
+        </div>
+      </div>
+      <button id="logout-btn" class="btn ghost block">Log out</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="page-title">Dashboard</h2>
+        <div class="tsub" id="page-sub">Overview of all support tickets</div>
+      </div>
+      <div class="topbar-right">
+        <span class="live-clock" id="live-clock">--:--:--</span>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section class="section active" id="section-dashboard">
+        <div class="stat-grid">
+          <div class="stat-card"><span class="accent-bar" style="background:var(--accent)"></span>
+            <div class="label">Total Tickets</div>
+            <div class="value" id="stat-total">0</div>
+            <div class="sub">All time</div>
+          </div>
+          <div class="stat-card"><span class="accent-bar" style="background:var(--pending)"></span>
+            <div class="label">Pending</div>
+            <div class="value" id="stat-pending">0</div>
+            <div class="sub">Awaiting action</div>
+          </div>
+          <div class="stat-card"><span class="accent-bar" style="background:var(--start)"></span>
+            <div class="label">In Progress (Start)</div>
+            <div class="value" id="stat-start">0</div>
+            <div class="sub">Currently being worked</div>
+          </div>
+          <div class="stat-card"><span class="accent-bar" style="background:var(--close)"></span>
+            <div class="label">Closed</div>
+            <div class="value" id="stat-close">0</div>
+            <div class="sub">Resolved tickets</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Tickets logged — last 7 days <span class="tag">by date</span></h3>
+            <div class="bars" id="week-bars"></div>
+          </div>
+          <div class="panel">
+            <h3>Status summary <span class="tag">all tickets</span></h3>
+            <div class="donut-wrap">
+              <svg width="120" height="120" viewBox="0 0 120 120" id="donut-svg"></svg>
+              <div class="legend" id="donut-legend"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Recent tickets <span class="tag">last 5</span></h3>
+            <table>
+              <thead><tr><th>Ticket #</th><th>Client</th><th>Device</th><th>Status</th></tr></thead>
+              <tbody id="recent-tickets-body"></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>Current tickets — Start <span class="tag">in progress</span></h3>
+            <table>
+              <thead><tr><th>Ticket #</th><th>Site</th><th>Status</th></tr></thead>
+              <tbody id="current-start-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ADD TICKET ============ -->
+      <section class="section" id="section-add">
+        <div class="form-card">
+          <div class="ticket-id-box">
+            <span class="lab">Ticket Number</span>
+            <span class="val" id="new-ticket-id">TCK-000001</span>
+          </div>
+          <form id="add-ticket-form">
+            <div class="form-grid">
+              <div class="field"><label>Client Name</label><input type="text" id="f-client" required placeholder="e.g. Net_Tech"></div>
+              <div class="field"><label>Contact Number</label><input type="tel" id="f-contact" required placeholder="e.g. +92 349 6285943"></div>
+              <div class="field"><label>Location</label><input type="text" id="f-location" required placeholder="e.g. Blue Area, Islamabad"></div>
+              <div class="field"><label>Site Name</label><input type="text" id="f-site" required placeholder="e.g. Head Office Branch"></div>
+              <div class="field"><label>Device Model</label><input type="text" id="f-device" required placeholder="e.g. Cisco Catalyst 2960"></div>
+              <div class="field"><label>Serial Number</label><input type="text" id="f-serial" required placeholder="e.g. FCW2140L0GH"></div>
+              <div class="field"><label>Date</label><input type="date" id="f-date" required></div>
+              <div class="field">
+                <label>Ticket Status</label>
+                <div class="status-pill-select">
+                  <label><input type="radio" name="status" value="Pending" checked><span class="pill pending">Pending</span></label>
+                  <label><input type="radio" name="status" value="Start"><span class="pill start">Start</span></label>
+                  <label><input type="radio" name="status" value="Close"><span class="pill close">Close</span></label>
+                </div>
+              </div>
+              <div class="field full" id="prev-ticket-wrap">
+                <label>Link to Previous Ticket <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(optional — auto-suggested by matching Client Name or Serial Number, for repeat issues on the same device/client)</span></label>
+                <div id="prev-ticket-suggestions" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                <input type="hidden" id="f-prev-ref">
+                <div class="linked-banner hidden" id="prev-ticket-selected">
+                  Linked to previous ticket <span class="mono" id="prev-ticket-selected-label"></span>
+                  <button type="button" class="icon-btn" id="prev-ticket-remove-btn" style="margin-left:auto;">Remove Link</button>
+                </div>
+              </div>
+              <div class="field full"><label>Issue in Details</label><textarea id="f-issue" required placeholder="Describe the reported issue in detail..."></textarea></div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn">Save Ticket</button>
+              <button type="button" class="btn ghost" id="add-reset-btn">Reset Form</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- ============ SEARCH TICKET ============ -->
+      <section class="section" id="section-search">
+        <div class="search-bar">
+          <div class="search-row">
+            <div class="field" style="margin-bottom:0"><label>Ticket Number</label><input type="text" id="s-ticket" placeholder="TCK-000001"></div>
+            <div class="field" style="margin-bottom:0"><label>Device Model</label><input type="text" id="s-device" placeholder="e.g. Cisco"></div>
+            <div class="field" style="margin-bottom:0"><label>Serial Number</label><input type="text" id="s-serial" placeholder="e.g. FCW21..."></div>
+            <div class="field" style="margin-bottom:0"><label>Date From</label><input type="date" id="s-date-from"></div>
+          </div>
+          <div class="search-row" style="grid-template-columns:1fr 1fr 1fr;">
+            <div class="field" style="margin-bottom:0"><label>Date To</label><input type="date" id="s-date-to"></div>
+            <div class="field" style="margin-bottom:0; grid-column: span 2; display:flex; align-items:flex-end; gap:10px;">
+              <button class="btn" id="search-btn" style="width:100%">Search Tickets</button>
+              <button class="btn ghost" id="search-clear-btn" style="width:100%">Clear</button>
+            </div>
+          </div>
+          <div class="status-tabs">
+            <button class="status-tab active" data-status="All">All</button>
+            <button class="status-tab" data-status="Pending">Pending</button>
+            <button class="status-tab" data-status="Close">Close</button>
+          </div>
+        </div>
+        <div class="results-panel">
+          <table>
+            <thead><tr>
+              <th>Ticket #</th><th>Client</th><th>Site / Location</th><th>Device</th><th>Serial</th><th>Date</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="search-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ RESOLVE ISSUE ============ -->
+      <section class="section" id="section-resolve">
+        <div class="resolve-lookup">
+          <input type="text" id="resolve-ticket-input" placeholder="Enter Ticket Number, e.g. TCK-000001">
+          <button class="btn" id="resolve-load-btn">Load Ticket</button>
+        </div>
+        <div class="open-tickets-hint">Open tickets (Pending / Start) — click to load:</div>
+        <div class="chip-list" id="open-tickets-chips"></div>
+
+        <div class="form-card hidden" id="resolve-form-card">
+          <div class="ticket-id-box">
+            <span class="lab">Resolving Ticket</span>
+            <span class="val" id="resolve-ticket-id">—</span>
+          </div>
+          <form id="resolve-form">
+            <div class="form-grid">
+              <div class="field full">
+                <div class="readonly-toggle">
+                  <label style="margin-bottom:0">Issue in Details <span style="color:var(--text-faint); font-weight:400; text-transform:none;">(auto-filled from ticket)</span></label>
+                  <button type="button" class="edit-link" id="r-issue-edit-btn">Edit</button>
+                </div>
+                <textarea id="r-issue" required readonly></textarea>
+              </div>
+              <div class="field full"><label>How to Resolve</label><textarea id="r-solution" required placeholder="Describe the steps taken to resolve this issue..."></textarea></div>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn">Mark as Resolved &amp; Close</button>
+              <button type="button" class="btn ghost" id="resolve-cancel-btn">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="history-panel">
+          <h3 style="font-size:14px; font-weight:700; margin-bottom:14px;">Closed Tickets History <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">search past issues by wording</span></h3>
+          <div class="history-search">
+            <input type="text" id="history-search-input" placeholder="Search issue wording, e.g. 'switch not powering on'">
+            <button class="btn ghost" id="history-search-clear">Clear</button>
+          </div>
+          <table>
+            <thead><tr><th>Ticket #</th><th>Client Name</th><th>Project / Site</th><th>Resolved Date</th><th></th></tr></thead>
+            <tbody id="history-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ REPORT ============ -->
+      <section class="section" id="section-report">
+        <div class="search-bar">
+          <div class="report-filter-tabs">
+            <button class="rf-tab active" data-mode="month">Month wise</button>
+            <button class="rf-tab" data-mode="range">Date to Date</button>
+            <button class="rf-tab" data-mode="all">All Closed Tickets</button>
+          </div>
+          <div class="report-controls-row" id="report-controls-month">
+            <div class="field"><label>Select Month</label><input type="month" id="rep-month"></div>
+          </div>
+          <div class="report-controls-row hidden" id="report-controls-range">
+            <div class="field"><label>Start Date</label><input type="date" id="rep-date-from"></div>
+            <div class="field"><label>End Date</label><input type="date" id="rep-date-to"></div>
+          </div>
+          <div class="form-actions" style="margin-top:0;">
+            <button class="btn" id="report-generate-btn">Generate Report</button>
+            <button class="btn ghost" id="report-download-btn">Download / Print PDF</button>
+          </div>
+        </div>
+
+        <div class="report-summary-strip">
+          <div class="rs-item">Closed tickets in range<b id="rep-count">0</b></div>
+        </div>
+
+        <div class="results-panel">
+          <table>
+            <thead><tr><th>Ticket #</th><th>Client Name</th><th>Site</th><th>Start Date</th><th>End Date</th><th>Status</th></tr></thead>
+            <tbody id="report-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ CLIENT HISTORY ============ -->
+      <section class="section" id="section-history">
+        <div class="search-bar">
+          <div class="search-row" style="grid-template-columns:1fr 1fr 1fr;">
+            <div class="field" style="margin-bottom:0"><label>Ticket Number</label><input type="text" id="ch-search-ticket" placeholder="TCK-000001"></div>
+            <div class="field" style="margin-bottom:0"><label>Client Name</label><input type="text" id="ch-search-client" placeholder="e.g. Net_Tech"></div>
+            <div class="field" style="margin-bottom:0; display:flex; align-items:flex-end; gap:10px;">
+              <button class="btn" id="ch-search-btn" style="width:100%">Search</button>
+              <button class="btn ghost" id="ch-search-clear-btn" style="width:100%">Clear</button>
+            </div>
+          </div>
+        </div>
+        <div class="results-panel">
+          <table>
+            <thead><tr><th>Ticket #</th><th>Client</th><th>Site</th><th>Ticket Started</th><th>Ticket Closed</th><th>Status</th><th>Ref</th><th></th></tr></thead>
+            <tbody id="ch-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============ LOGS ============ -->
+      <section class="section" id="section-logs">
+        <div class="panel" style="margin-bottom:20px;">
+          <h3>Backup &amp; Restore <span class="tag">Save or transfer your ticket data</span></h3>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn" id="backup-export-btn" type="button">Export Full Backup</button>
+            <button class="btn ghost" id="backup-import-btn" type="button">Import / Restore Backup</button>
+            <input type="file" id="backup-import-file" accept=".json,application/json" style="display:none;">
+          </div>
+          <p style="font-size:12px; color:var(--text-faint); margin-top:12px; line-height:1.5;">
+            Export a backup file to keep a copy of all tickets, ticket numbering, and activity logs. Restore a previously exported JSON backup on this browser.
+          </p>
+        </div>
+        <div class="search-bar">
+          <div class="search-row">
+            <div class="field" style="margin-bottom:0"><label>Ticket Number</label><input type="text" id="lg-ticket" placeholder="TCK-000001"></div>
+            <div class="field" style="margin-bottom:0"><label>Client Name</label><input type="text" id="lg-client" placeholder="e.g. Net_Tech"></div>
+            <div class="field" style="margin-bottom:0"><label>Serial Number</label><input type="text" id="lg-serial" placeholder="e.g. FCW21..."></div>
+            <div class="field" style="margin-bottom:0">
+              <label>Action Type</label>
+              <select id="lg-action">
+                <option value="All">All Actions</option>
+                <option>Login</option>
+                <option>Logout</option>
+                <option>Add Ticket</option>
+                <option>Start Ticket</option>
+                <option>Close Ticket</option>
+                <option>Reopen Ticket</option>
+                <option>Edit Ticket</option>
+                <option>Delete Ticket</option>
+                <option>Search Ticket</option>
+                <option>Print Ticket</option>
+                <option>Export Report</option>
+              </select>
+            </div>
+          </div>
+          <div class="search-row" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+            <div class="field" style="margin-bottom:0"><label>Date From</label><input type="date" id="lg-date-from"></div>
+            <div class="field" style="margin-bottom:0"><label>Date To</label><input type="date" id="lg-date-to"></div>
+            <div class="field" style="margin-bottom:0; display:flex; align-items:flex-end; gap:10px;">
+              <button class="btn" id="lg-search-btn" style="width:100%">Search Logs</button>
+              <button class="btn ghost" id="lg-clear-btn" style="width:100%">Clear</button>
+            </div>
+            <div class="field" style="margin-bottom:0; display:flex; align-items:flex-end; gap:10px;">
+              <button class="btn ghost" id="lg-export-csv-btn" style="width:100%">Export CSV</button>
+              <button class="btn ghost" id="lg-print-btn" style="width:100%">Print / PDF</button>
+            </div>
+          </div>
+        </div>
+        <div class="report-summary-strip">
+          <div class="rs-item">Matching log entries<b id="lg-count">0</b></div>
+        </div>
+        <div class="results-panel">
+          <table>
+            <thead><tr><th>Date &amp; Time</th><th>Action</th><th>Ticket #</th><th>Client</th><th>Serial #</th><th>Details</th></tr></thead>
+            <tbody id="lg-results-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- Ticket detail modal -->
+<div class="modal-overlay hidden" id="detail-modal">
+  <div class="modal">
+    <h3>Ticket Details <button class="close-x" id="modal-close">&times;</button></h3>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- Edit ticket modal -->
+<div class="modal-overlay hidden" id="edit-modal">
+  <div class="modal" style="max-width:720px;">
+    <h3>Edit Ticket <button class="close-x" id="edit-modal-close">&times;</button></h3>
+    <form id="edit-ticket-form">
+      <input type="hidden" id="e-id">
+      <div class="form-grid">
+        <div class="field"><label>Client Name</label><input type="text" id="e-client" required></div>
+        <div class="field"><label>Contact Number</label><input type="tel" id="e-contact" required></div>
+        <div class="field"><label>Location</label><input type="text" id="e-location" required></div>
+        <div class="field"><label>Site Name</label><input type="text" id="e-site" required></div>
+        <div class="field"><label>Device Model</label><input type="text" id="e-device" required></div>
+        <div class="field"><label>Serial Number</label><input type="text" id="e-serial" required></div>
+        <div class="field"><label>Date</label><input type="date" id="e-date" required></div>
+        <div class="field">
+          <label>Ticket Status</label>
+          <div class="status-pill-select">
+            <label><input type="radio" name="e-status" value="Pending"><span class="pill pending">Pending</span></label>
+            <label><input type="radio" name="e-status" value="Start"><span class="pill start">Start</span></label>
+            <label><input type="radio" name="e-status" value="Close"><span class="pill close">Close</span></label>
+          </div>
+        </div>
+        <div class="field full"><label>Issue in Details</label><textarea id="e-issue" required></textarea></div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn">Save Changes</button>
+        <button type="button" class="btn ghost" id="edit-cancel-btn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Client History full record modal (with WhatsApp proof attachments) -->
+<div class="modal-overlay hidden" id="chd-modal">
+  <div class="modal" style="max-width:780px;">
+    <h3>Ticket &amp; Client Record <button class="close-x" id="chd-modal-close">&times;</button></h3>
+    <div id="chd-body"></div>
+  </div>
+</div>
+
+<!-- Lightbox for viewing a full-size screenshot -->
+<div class="lightbox-overlay hidden" id="lightbox-overlay">
+  <img id="lightbox-img" src="" alt="Screenshot preview">
+</div>
+
+<!-- Hidden printable letterhead area, populated by JS then sent to window.print() -->
+<div id="print-area"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== AUTH ===================== */
+/* No session is persisted anywhere (not localStorage, not sessionStorage) —
+   this system always asks for username & password every time it is opened or refreshed. */
+const CREDENTIALS = { username: "Manan", password: "Manan@786" };
+
+const loginScreen = document.getElementById("login-screen");
+const appEl = document.getElementById("app");
+
+document.getElementById("login-form").addEventListener("submit", function(e){
+  e.preventDefault();
+  const u = document.getElementById("login-user").value.trim();
+  const p = document.getElementById("login-pass").value;
+  const err = document.getElementById("login-error");
+  if(u === CREDENTIALS.username && p === CREDENTIALS.password){
+    err.textContent = "";
+    loginScreen.style.display = "none";
+    appEl.classList.add("active");
+    initApp();
+    addLog("Login", { details: `${u} logged in to the console.` });
+  } else {
+    err.textContent = "Invalid username or password. Please try again.";
+  }
+});
+
+document.getElementById("logout-btn").addEventListener("click", function(){
+  addLog("Logout", { details: `${CREDENTIALS.username} logged out of the console.` });
+  appEl.classList.remove("active");
+  loginScreen.style.display = "flex";
+  document.getElementById("login-user").value = "";
+  document.getElementById("login-pass").value = "";
+});
+
+/* ===================== DATA LAYER (localStorage) ===================== */
+const TICKETS_KEY = "nts_tickets";
+const COUNTER_KEY = "nts_counter";
+
+function getTickets(){
+  try{ return JSON.parse(localStorage.getItem(TICKETS_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveTickets(list){ localStorage.setItem(TICKETS_KEY, JSON.stringify(list)); }
+
+function nextTicketId(){
+  let n = parseInt(localStorage.getItem(COUNTER_KEY) || "0", 10) + 1;
+  localStorage.setItem(COUNTER_KEY, String(n));
+  return "TCK-" + String(n).padStart(6, "0");
+}
+function peekNextTicketId(){
+  let n = parseInt(localStorage.getItem(COUNTER_KEY) || "0", 10) + 1;
+  return "TCK-" + String(n).padStart(6, "0");
+}
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=> t.classList.remove("show"), 2600);
+}
+
+/* ===================== ACTIVITY LOGS (audit trail) ===================== */
+const LOGS_KEY = "nts_logs";
+const LOG_ACTION_COLORS = {
+  "Login":"#8A96AD", "Logout":"#8A96AD",
+  "Add Ticket":"#3DDC97", "Start Ticket":"#4C8DFF", "Close Ticket":"#3DDC97",
+  "Reopen Ticket":"#F5A623", "Edit Ticket":"#4C8DFF", "Delete Ticket":"#FF5D5D",
+  "Search Ticket":"#8A96AD", "Print Ticket":"#8A96AD", "Export Report":"#8A96AD"
+};
+
+function getLogs(){
+  try{ return JSON.parse(localStorage.getItem(LOGS_KEY)) || []; }
+  catch(e){ return []; }
+}
+function saveLogs(logs){
+  if(logs.length > 4000) logs = logs.slice(logs.length - 4000); // keep storage bounded
+  localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+}
+function addLog(action, opts){
+  opts = opts || {};
+  const logs = getLogs();
+  logs.push({
+    id: "log_" + Date.now() + "_" + Math.random().toString(36).slice(2,7),
+    timestamp: Date.now(),
+    dateStr: new Date().toISOString().slice(0,10),
+    action: action,
+    ticketId: opts.ticketId || null,
+    clientName: opts.clientName || null,
+    serialNumber: opts.serialNumber || null,
+    details: opts.details || ""
+  });
+  saveLogs(logs);
+}
+function logBadge(action){
+  const c = LOG_ACTION_COLORS[action] || "#8A96AD";
+  return `<span class="log-badge" style="color:${c}; background:${c}1F;">${action}</span>`;
+}
+
+/* ===================== NAVIGATION ===================== */
+const pageMeta = {
+  dashboard: { title: "Dashboard", sub: "Overview of all support tickets" },
+  add: { title: "Add Ticket", sub: "Log a new network support ticket" },
+  search: { title: "Search Ticket", sub: "Find tickets by number, device, serial or date" },
+  resolve: { title: "Resolve Issue", sub: "Close out an open ticket with a resolution" },
+  report: { title: "Report", sub: "Closed ticket report — generate and print/download" },
+  history: { title: "Client History", sub: "Search by ticket or client, view full timeline & WhatsApp proof of contact" },
+  logs: { title: "Activity Logs", sub: "Full audit trail — login, ticket actions, search & export" }
+};
+
+function switchSection(name){
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.getElementById("section-" + name).classList.add("active");
+  document.querySelectorAll(".navitem").forEach(b => b.classList.toggle("active", b.dataset.section === name));
+  document.getElementById("page-title").textContent = pageMeta[name].title;
+  document.getElementById("page-sub").textContent = pageMeta[name].sub;
+  if(name === "dashboard") renderDashboard();
+  if(name === "add") prepareAddForm();
+  if(name === "search") renderSearchResults();
+  if(name === "resolve"){ renderOpenTicketChips(); renderClosedHistory(); }
+  if(name === "report") renderReport();
+  if(name === "history") renderChHistory();
+  if(name === "logs") renderLogs();
+}
+
+document.querySelectorAll(".navitem").forEach(btn=>{
+  btn.addEventListener("click", ()=> switchSection(btn.dataset.section));
+});
+
+/* ===================== LIVE CLOCK ===================== */
+function tickClock(){
+  const now = new Date();
+  document.getElementById("live-clock").textContent = now.toLocaleString("en-GB", { hour12:false });
+}
+setInterval(tickClock, 1000);
+
+/* ===================== DASHBOARD ===================== */
+function renderDashboard(){
+  const tickets = getTickets();
+  const total = tickets.length;
+  const pending = tickets.filter(t=>t.status==="Pending").length;
+  const start = tickets.filter(t=>t.status==="Start").length;
+  const close = tickets.filter(t=>t.status==="Close").length;
+
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-pending").textContent = pending;
+  document.getElementById("stat-start").textContent = start;
+  document.getElementById("stat-close").textContent = close;
+
+  // Bars: last 7 days
+  const barsEl = document.getElementById("week-bars");
+  barsEl.innerHTML = "";
+  const days = [];
+  for(let i=6;i>=0;i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    days.push(d);
+  }
+  const counts = days.map(d=>{
+    const key = d.toISOString().slice(0,10);
+    return tickets.filter(t=>t.date===key).length;
+  });
+  const maxCount = Math.max(1, ...counts);
+  days.forEach((d,i)=>{
+    const col = document.createElement("div");
+    col.className = "bar-col";
+    const h = Math.round((counts[i]/maxCount)*110) + (counts[i]>0?4:0);
+    col.innerHTML = `<div class="bar-val">${counts[i]}</div>
+      <div class="bar" style="height:${h}px; background:${i===6?'var(--accent)':'var(--surface-3)'}"></div>
+      <div class="bar-label">${d.toLocaleDateString('en-GB',{weekday:'short'})}</div>`;
+    barsEl.appendChild(col);
+  });
+
+  // Donut
+  renderDonut(pending, start, close, total);
+
+  // Recent tickets
+  const recentBody = document.getElementById("recent-tickets-body");
+  const recent = [...tickets].sort((a,b)=> b.createdAt - a.createdAt).slice(0,5);
+  recentBody.innerHTML = recent.length ? recent.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.clientName)}</td>
+      <td>${escapeHtml(t.deviceModel)}</td>
+      <td>${statusBadge(t.status)}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="4">No tickets logged yet.</td></tr>`;
+
+  // Current Start tickets
+  const startBody = document.getElementById("current-start-body");
+  const startTickets = tickets.filter(t=>t.status==="Start").sort((a,b)=> b.createdAt-a.createdAt);
+  startBody.innerHTML = startTickets.length ? startTickets.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.siteName)}</td>
+      <td>${statusBadge(t.status)}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="3">No tickets currently in progress.</td></tr>`;
+}
+
+function renderDonut(pending, start, close, total){
+  const svg = document.getElementById("donut-svg");
+  const legend = document.getElementById("donut-legend");
+  const data = [
+    { label:"Pending", value:pending, color:"var(--pending)", raw:"#F5A623" },
+    { label:"Start", value:start, color:"var(--start)", raw:"#4C8DFF" },
+    { label:"Close", value:close, color:"var(--close)", raw:"#3DDC97" }
+  ];
+  const r = 50, cx=60, cy=60, circumference = 2*Math.PI*r;
+  let offset = 0;
+  let paths = "";
+  if(total === 0){
+    paths = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#26334D" stroke-width="14"/>`;
+  } else {
+    data.forEach(d=>{
+      const frac = d.value/total;
+      const dash = frac * circumference;
+      paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${d.raw}" stroke-width="14"
+        stroke-dasharray="${dash} ${circumference-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+      offset += dash;
+    });
+  }
+  svg.innerHTML = paths + `<text x="60" y="65" text-anchor="middle" font-size="20" font-weight="700" fill="#E8EDF7" font-family="var(--mono)">${total}</text>`;
+  legend.innerHTML = data.map(d=>`
+    <div class="row"><span class="sw" style="background:${d.raw}"></span>${d.label}<span class="num">${d.value}</span></div>
+  `).join("");
+}
+
+/* ===================== LETTERHEAD / PRINT HELPERS ===================== */
+const COMPANY = {
+  name: "Netpaq",
+  address: "Blue Area, Islamabad",
+  website: "https://netpaq.com.pk/"
+};
+const ENGINEER = {
+  name: "Abdul Manan Javed",
+  role: "Network Engineer",
+  email: "support@netpaq.com.pk",
+  phone: "+92 330 5988864"
+};
+
+function buildLetterhead(docTitle, metaLine){
+  return `
+    <div class="letterhead">
+      <div class="company">
+        <h1>${COMPANY.name}</h1>
+        <p>${COMPANY.address}<br>${COMPANY.website}</p>
+      </div>
+      <div class="engineer">
+        <div class="nm">${ENGINEER.name}</div>
+        <div>${ENGINEER.role}</div>
+        <div>${ENGINEER.email}</div>
+        <div>${ENGINEER.phone}</div>
+      </div>
+    </div>
+    <div class="print-doc-title">${docTitle}</div>
+    <div class="print-meta-line">${metaLine}</div>
+  `;
+}
+
+function printBadge(status){
+  const colors = { Pending:"#F5A623", Start:"#4C8DFF", Close:"#3DDC97" };
+  const c = colors[status] || "#999";
+  return `<span class="print-status-badge" style="color:${c}; border-color:${c};">${status}</span>`;
+}
+
+function runPrint(innerHtml){
+  const area = document.getElementById("print-area");
+  area.innerHTML = innerHtml + `<div class="print-footer">Generated by ${ENGINEER.name} — ${COMPANY.name} Ticket Management System — ${new Date().toLocaleString('en-GB')}</div>`;
+  window.print();
+}
+
+function statusBadge(status){
+  const cls = status.toLowerCase();
+  return `<span class="badge ${cls}">${status}</span>`;
+}
+function escapeHtml(str){
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : str;
+  return div.innerHTML;
+}
+
+/* ===================== ADD TICKET ===================== */
+function prepareAddForm(){
+  document.getElementById("new-ticket-id").textContent = peekNextTicketId();
+  document.getElementById("f-date").value = new Date().toISOString().slice(0,10);
+  clearPrevTicketLink();
+  document.getElementById("prev-ticket-suggestions").innerHTML = "";
+}
+
+/* Suggest previous tickets for the same client AND/OR same device serial number as they type */
+function updatePrevTicketSuggestions(){
+  const qClient = document.getElementById("f-client").value.trim().toLowerCase();
+  const qSerial = document.getElementById("f-serial").value.trim().toLowerCase();
+  const box = document.getElementById("prev-ticket-suggestions");
+  if(qClient.length < 2 && qSerial.length < 2){ box.innerHTML = ""; return; }
+
+  const tickets = getTickets();
+  const map = new Map();
+  if(qSerial.length >= 2){
+    tickets.filter(t=> t.serialNumber.toLowerCase().includes(qSerial))
+      .forEach(t=> map.set(t.id, { t, reasons:new Set(["same serial number"]) }));
+  }
+  if(qClient.length >= 2){
+    tickets.filter(t=> t.clientName.toLowerCase().includes(qClient))
+      .forEach(t=>{
+        if(map.has(t.id)) map.get(t.id).reasons.add("same client");
+        else map.set(t.id, { t, reasons:new Set(["same client"]) });
+      });
+  }
+  const list = Array.from(map.values()).sort((a,b)=> b.t.createdAt - a.t.createdAt).slice(0,6);
+  box.innerHTML = list.length ? list.map(({t,reasons})=>`
+    <span class="prev-suggest-chip" onclick="selectPrevTicket('${t.id}')">
+      ${t.id} · ${escapeHtml(t.status)} · ${t.date} <span class="ref-tag">(${Array.from(reasons).join(" & ")})</span>
+    </span>`).join("") : `<span class="ref-tag">No earlier tickets found yet for this client / serial number.</span>`;
+}
+document.getElementById("f-client").addEventListener("input", updatePrevTicketSuggestions);
+document.getElementById("f-serial").addEventListener("input", updatePrevTicketSuggestions);
+
+function selectPrevTicket(id){
+  document.getElementById("f-prev-ref").value = id;
+  document.getElementById("prev-ticket-selected-label").textContent = id;
+  document.getElementById("prev-ticket-selected").classList.remove("hidden");
+  document.getElementById("prev-ticket-suggestions").innerHTML = "";
+}
+function clearPrevTicketLink(){
+  document.getElementById("f-prev-ref").value = "";
+  document.getElementById("prev-ticket-selected").classList.add("hidden");
+}
+document.getElementById("prev-ticket-remove-btn").addEventListener("click", clearPrevTicketLink);
+
+document.getElementById("add-ticket-form").addEventListener("submit", function(e){
+  e.preventDefault();
+  const status = document.querySelector('input[name="status"]:checked').value;
+  const prevRef = document.getElementById("f-prev-ref").value.trim();
+  const ticket = {
+    id: nextTicketId(),
+    clientName: document.getElementById("f-client").value.trim(),
+    contactNumber: document.getElementById("f-contact").value.trim(),
+    location: document.getElementById("f-location").value.trim(),
+    siteName: document.getElementById("f-site").value.trim(),
+    deviceModel: document.getElementById("f-device").value.trim(),
+    serialNumber: document.getElementById("f-serial").value.trim(),
+    date: document.getElementById("f-date").value,
+    issueDetails: document.getElementById("f-issue").value.trim(),
+    status: status,
+    resolution: null,
+    previousTicketRef: prevRef || null,
+    attachments: { chatLog: "", screenshots: [], voiceNotes: [] },
+    createdAt: Date.now()
+  };
+  const tickets = getTickets();
+  tickets.push(ticket);
+  saveTickets(tickets);
+  showToast(`Ticket ${ticket.id} saved successfully.`);
+  addLog("Add Ticket", { ticketId: ticket.id, clientName: ticket.clientName, serialNumber: ticket.serialNumber,
+    details: `New ticket created with status "${ticket.status}".${prevRef ? ` Linked to previous ticket ${prevRef}.` : ""}` });
+  if(ticket.status === "Start"){
+    addLog("Start Ticket", { ticketId: ticket.id, clientName: ticket.clientName, serialNumber: ticket.serialNumber,
+      details: `Ticket set to Start (work in progress) at creation.` });
+  }
+  this.reset();
+  prepareAddForm();
+});
+
+document.getElementById("add-reset-btn").addEventListener("click", function(){
+  document.getElementById("add-ticket-form").reset();
+  prepareAddForm();
+});
+
+/* ===================== SEARCH TICKET ===================== */
+let activeStatusTab = "All";
+
+document.querySelectorAll(".status-tab").forEach(tab=>{
+  tab.addEventListener("click", function(){
+    document.querySelectorAll(".status-tab").forEach(t=>t.classList.remove("active"));
+    this.classList.add("active");
+    activeStatusTab = this.dataset.status;
+    renderSearchResults();
+  });
+});
+
+document.getElementById("search-btn").addEventListener("click", function(){
+  const parts = [];
+  const qt = document.getElementById("s-ticket").value.trim();
+  const qd = document.getElementById("s-device").value.trim();
+  const qs = document.getElementById("s-serial").value.trim();
+  const df = document.getElementById("s-date-from").value;
+  const dt = document.getElementById("s-date-to").value;
+  if(qt) parts.push(`ticket "${qt}"`);
+  if(qd) parts.push(`device "${qd}"`);
+  if(qs) parts.push(`serial "${qs}"`);
+  if(df || dt) parts.push(`date ${df||'…'} to ${dt||'…'}`);
+  parts.push(`status filter: ${activeStatusTab}`);
+  renderSearchResults();
+  addLog("Search Ticket", { ticketId: qt || null, serialNumber: qs || null,
+    details: `Search Ticket page — ${parts.join(", ")}.` });
+});
+document.getElementById("search-clear-btn").addEventListener("click", function(){
+  document.getElementById("s-ticket").value = "";
+  document.getElementById("s-device").value = "";
+  document.getElementById("s-serial").value = "";
+  document.getElementById("s-date-from").value = "";
+  document.getElementById("s-date-to").value = "";
+  activeStatusTab = "All";
+  document.querySelectorAll(".status-tab").forEach(t=>t.classList.toggle("active", t.dataset.status==="All"));
+  renderSearchResults();
+});
+
+function renderSearchResults(){
+  const tickets = getTickets();
+  const qTicket = document.getElementById("s-ticket").value.trim().toLowerCase();
+  const qDevice = document.getElementById("s-device").value.trim().toLowerCase();
+  const qSerial = document.getElementById("s-serial").value.trim().toLowerCase();
+  const dFrom = document.getElementById("s-date-from").value;
+  const dTo = document.getElementById("s-date-to").value;
+
+  let results = tickets.filter(t=>{
+    if(qTicket && !t.id.toLowerCase().includes(qTicket)) return false;
+    if(qDevice && !t.deviceModel.toLowerCase().includes(qDevice)) return false;
+    if(qSerial && !t.serialNumber.toLowerCase().includes(qSerial)) return false;
+    if(dFrom && t.date < dFrom) return false;
+    if(dTo && t.date > dTo) return false;
+    if(activeStatusTab === "Pending" && t.status !== "Pending") return false;
+    if(activeStatusTab === "Close" && t.status !== "Close") return false;
+    return true;
+  }).sort((a,b)=> b.createdAt - a.createdAt);
+
+  const body = document.getElementById("search-results-body");
+  body.innerHTML = results.length ? results.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.clientName)}</td>
+      <td>${escapeHtml(t.siteName)} / ${escapeHtml(t.location)}</td>
+      <td>${escapeHtml(t.deviceModel)}</td>
+      <td class="mono">${escapeHtml(t.serialNumber)}</td>
+      <td>${t.date}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" onclick="openDetail('${t.id}')">View</button>
+          <button class="icon-btn edit" onclick="openEditModal('${t.id}')">Edit</button>
+          ${t.status === "Close" ? `<button class="icon-btn edit" onclick="reopenTicket('${t.id}')">Reopen</button>` : ""}
+          <button class="icon-btn print" onclick="printTicket('${t.id}')">Print</button>
+          <button class="icon-btn delete" onclick="deleteTicket('${t.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="8">No matching tickets found.</td></tr>`;
+}
+
+function openDetail(id){
+  const t = getTickets().find(x=>x.id===id);
+  if(!t) return;
+  const modal = document.getElementById("detail-modal");
+  document.getElementById("modal-body").innerHTML = `
+    <div class="detail-row"><span class="k">Ticket Number</span><span class="v mono">${t.id}</span></div>
+    <div class="detail-row"><span class="k">Status</span><span class="v">${statusBadge(t.status)}</span></div>
+    <div class="detail-row"><span class="k">Client Name</span><span class="v">${escapeHtml(t.clientName)}</span></div>
+    <div class="detail-row"><span class="k">Contact Number</span><span class="v">${escapeHtml(t.contactNumber)}</span></div>
+    <div class="detail-row"><span class="k">Location</span><span class="v">${escapeHtml(t.location)}</span></div>
+    <div class="detail-row"><span class="k">Site Name</span><span class="v">${escapeHtml(t.siteName)}</span></div>
+    <div class="detail-row"><span class="k">Device Model</span><span class="v">${escapeHtml(t.deviceModel)}</span></div>
+    <div class="detail-row"><span class="k">Serial Number</span><span class="v mono">${escapeHtml(t.serialNumber)}</span></div>
+    <div class="detail-row"><span class="k">Date</span><span class="v">${t.date}</span></div>
+    <div class="detail-row block"><span class="k">Issue in Details</span><span class="v">${escapeHtml(t.issueDetails)}</span></div>
+    ${t.resolution ? `<div class="detail-row block"><span class="k">How it was Resolved</span><span class="v">${escapeHtml(t.resolution.details)}</span></div>
+    <div class="detail-row"><span class="k">Resolved Date</span><span class="v">${t.resolution.resolvedDate}</span></div>` : ""}
+    ${t.previousTicketRef ? `<div class="detail-row"><span class="k">Previous Ticket Reference</span><span class="v mono">${t.previousTicketRef}</span></div>` : ""}
+    <div style="margin-top:16px;"><button class="btn ghost block" onclick="document.getElementById('detail-modal').classList.add('hidden'); switchSection('history'); document.getElementById('ch-search-ticket').value='${t.id}'; renderChHistory(); openClientHistoryDetail('${t.id}');">Open Full Record — WhatsApp Proof &amp; Client Timeline</button></div>
+  `;
+  modal.classList.remove("hidden");
+}
+document.getElementById("modal-close").addEventListener("click", ()=> document.getElementById("detail-modal").classList.add("hidden"));
+document.getElementById("detail-modal").addEventListener("click", function(e){ if(e.target === this) this.classList.add("hidden"); });
+
+/* ===================== EDIT TICKET ===================== */
+function openEditModal(id){
+  const t = getTickets().find(x=>x.id===id);
+  if(!t) return;
+  document.getElementById("e-id").value = t.id;
+  document.getElementById("e-client").value = t.clientName;
+  document.getElementById("e-contact").value = t.contactNumber;
+  document.getElementById("e-location").value = t.location;
+  document.getElementById("e-site").value = t.siteName;
+  document.getElementById("e-device").value = t.deviceModel;
+  document.getElementById("e-serial").value = t.serialNumber;
+  document.getElementById("e-date").value = t.date;
+  document.getElementById("e-issue").value = t.issueDetails;
+  document.querySelectorAll('input[name="e-status"]').forEach(r=> r.checked = (r.value === t.status));
+  document.getElementById("edit-modal").classList.remove("hidden");
+}
+document.getElementById("edit-modal-close").addEventListener("click", ()=> document.getElementById("edit-modal").classList.add("hidden"));
+document.getElementById("edit-cancel-btn").addEventListener("click", ()=> document.getElementById("edit-modal").classList.add("hidden"));
+document.getElementById("edit-modal").addEventListener("click", function(e){ if(e.target === this) this.classList.add("hidden"); });
+
+document.getElementById("edit-ticket-form").addEventListener("submit", function(e){
+  e.preventDefault();
+  const id = document.getElementById("e-id").value;
+  const tickets = getTickets();
+  const idx = tickets.findIndex(x=>x.id===id);
+  if(idx === -1) return;
+  const oldStatus = tickets[idx].status;
+  const statusEl = document.querySelector('input[name="e-status"]:checked');
+  tickets[idx].clientName = document.getElementById("e-client").value.trim();
+  tickets[idx].contactNumber = document.getElementById("e-contact").value.trim();
+  tickets[idx].location = document.getElementById("e-location").value.trim();
+  tickets[idx].siteName = document.getElementById("e-site").value.trim();
+  tickets[idx].deviceModel = document.getElementById("e-device").value.trim();
+  tickets[idx].serialNumber = document.getElementById("e-serial").value.trim();
+  tickets[idx].date = document.getElementById("e-date").value;
+  tickets[idx].issueDetails = document.getElementById("e-issue").value.trim();
+  tickets[idx].status = statusEl ? statusEl.value : tickets[idx].status;
+  const newStatus = tickets[idx].status;
+  saveTickets(tickets);
+  document.getElementById("edit-modal").classList.add("hidden");
+  showToast(`Ticket ${id} updated successfully.`);
+  addLog("Edit Ticket", { ticketId: id, clientName: tickets[idx].clientName, serialNumber: tickets[idx].serialNumber,
+    details: `Ticket details edited.${oldStatus !== newStatus ? ` Status changed ${oldStatus} → ${newStatus}.` : ""}` });
+  if(newStatus === "Start" && oldStatus !== "Start"){
+    addLog("Start Ticket", { ticketId: id, clientName: tickets[idx].clientName, serialNumber: tickets[idx].serialNumber, details: `Ticket status set to Start via edit.` });
+  }
+  if(newStatus === "Close" && oldStatus !== "Close"){
+    addLog("Close Ticket", { ticketId: id, clientName: tickets[idx].clientName, serialNumber: tickets[idx].serialNumber, details: `Ticket status set to Close via edit.` });
+  }
+  renderSearchResults();
+});
+
+/* ===================== DELETE TICKET ===================== */
+function deleteTicket(id){
+  if(!confirm(`Delete ticket ${id}? This cannot be undone.`)) return;
+  let tickets = getTickets();
+  const target = tickets.find(t=> t.id === id);
+  tickets = tickets.filter(t=> t.id !== id);
+  saveTickets(tickets);
+  showToast(`Ticket ${id} deleted.`);
+  addLog("Delete Ticket", { ticketId: id, clientName: target ? target.clientName : null, serialNumber: target ? target.serialNumber : null,
+    details: `Ticket permanently deleted from the system.` });
+  renderSearchResults();
+}
+
+/* ===================== REOPEN TICKET ===================== */
+function reopenTicket(id){
+  if(!confirm(`Reopen ticket ${id}? It will move back to Pending and can be worked on again.`)) return;
+  const tickets = getTickets();
+  const idx = tickets.findIndex(x=> x.id === id);
+  if(idx === -1) return;
+  if(!tickets[idx].reopenHistory) tickets[idx].reopenHistory = [];
+  if(tickets[idx].resolution){
+    tickets[idx].reopenHistory.push({
+      previousResolution: tickets[idx].resolution,
+      reopenedOn: new Date().toISOString().slice(0,10)
+    });
+  }
+  tickets[idx].status = "Pending";
+  tickets[idx].resolution = null;
+  saveTickets(tickets);
+  showToast(`Ticket ${id} reopened and moved to Pending.`);
+  addLog("Reopen Ticket", { ticketId: id, clientName: tickets[idx].clientName, serialNumber: tickets[idx].serialNumber,
+    details: `Ticket reopened and moved back to Pending.` });
+  renderDashboard();
+  renderSearchResults();
+  renderOpenTicketChips();
+  renderClosedHistory();
+  if(document.getElementById("section-history").classList.contains("active")) renderChHistory();
+  if(document.getElementById("section-report").classList.contains("active")) renderReport();
+  if(currentChdId === id){
+    openClientHistoryDetail(id);
+  }
+}
+
+/* Prefill Add Ticket form with a closed/existing ticket's client details and auto-link it,
+   so a repeat visit or a fresh issue for the same client keeps a clear reference trail. */
+function startNewLinkedTicket(id){
+  const t = getTickets().find(x=> x.id === id);
+  if(!t) return;
+  document.getElementById("chd-modal").classList.add("hidden");
+  document.getElementById("detail-modal").classList.add("hidden");
+  switchSection("add");
+  document.getElementById("f-client").value = t.clientName;
+  document.getElementById("f-contact").value = t.contactNumber;
+  document.getElementById("f-location").value = t.location;
+  document.getElementById("f-site").value = t.siteName;
+  document.getElementById("f-device").value = t.deviceModel;
+  document.getElementById("f-serial").value = t.serialNumber;
+  selectPrevTicket(t.id);
+  showToast(`New ticket pre-filled for ${t.clientName}. Add the new issue details and save.`);
+}
+
+/* ===================== PRINT SINGLE TICKET ===================== */
+function printTicket(id){
+  const t = getTickets().find(x=>x.id===id);
+  if(!t) return;
+  const kv = `
+    <table class="print-kv">
+      <tr><td class="k">Ticket Number</td><td>${t.id}</td></tr>
+      <tr><td class="k">Status</td><td>${printBadge(t.status)}</td></tr>
+      <tr><td class="k">Client Name</td><td>${escapeHtml(t.clientName)}</td></tr>
+      <tr><td class="k">Contact Number</td><td>${escapeHtml(t.contactNumber)}</td></tr>
+      <tr><td class="k">Location</td><td>${escapeHtml(t.location)}</td></tr>
+      <tr><td class="k">Site Name</td><td>${escapeHtml(t.siteName)}</td></tr>
+      <tr><td class="k">Device Model</td><td>${escapeHtml(t.deviceModel)}</td></tr>
+      <tr><td class="k">Serial Number</td><td>${escapeHtml(t.serialNumber)}</td></tr>
+      <tr><td class="k">Date</td><td>${t.date}</td></tr>
+    </table>
+    <div class="print-block-title">Issue in Details</div>
+    <div class="print-block-text">${escapeHtml(t.issueDetails)}</div>
+    ${t.resolution ? `<div class="print-block-title">How it was Resolved</div>
+    <div class="print-block-text">${escapeHtml(t.resolution.details)}</div>
+    <div class="print-block-title">Resolved Date</div>
+    <div class="print-block-text">${t.resolution.resolvedDate}</div>` : ""}
+  `;
+  const html = buildLetterhead("Support Ticket", `Ticket ${t.id} · Printed ${new Date().toLocaleDateString('en-GB')}`) + kv;
+  runPrint(html);
+  addLog("Print Ticket", { ticketId: t.id, clientName: t.clientName, serialNumber: t.serialNumber, details: `Single ticket printed/exported as PDF.` });
+}
+
+/* ===================== CLIENT HISTORY (search + full record + WhatsApp proof) ===================== */
+let currentChdId = null;
+
+function getTicketSafe(t){
+  // backfill fields for tickets created before this feature existed
+  if(!t.attachments) t.attachments = { chatLog:"", screenshots:[], voiceNotes:[] };
+  if(t.previousTicketRef === undefined) t.previousTicketRef = null;
+  return t;
+}
+
+function renderChHistory(){
+  const qTicket = document.getElementById("ch-search-ticket").value.trim().toLowerCase();
+  const qClient = document.getElementById("ch-search-client").value.trim().toLowerCase();
+  let list = getTickets().map(getTicketSafe);
+  if(qTicket) list = list.filter(t=> t.id.toLowerCase().includes(qTicket));
+  if(qClient) list = list.filter(t=> t.clientName.toLowerCase().includes(qClient));
+  list.sort((a,b)=> b.createdAt - a.createdAt);
+
+  const body = document.getElementById("ch-results-body");
+  body.innerHTML = list.length ? list.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.clientName)}</td>
+      <td>${escapeHtml(t.siteName)}</td>
+      <td>${t.date}</td>
+      <td>${t.resolution ? t.resolution.resolvedDate : "—"}</td>
+      <td>${statusBadge(t.status)}</td>
+      <td class="ref-tag">${t.previousTicketRef || "—"}</td>
+      <td><button class="icon-btn" onclick="openClientHistoryDetail('${t.id}')">View</button></td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="8">No tickets match this search.</td></tr>`;
+}
+document.getElementById("ch-search-btn").addEventListener("click", function(){
+  const qt = document.getElementById("ch-search-ticket").value.trim();
+  const qc = document.getElementById("ch-search-client").value.trim();
+  renderChHistory();
+  addLog("Search Ticket", { ticketId: qt || null, clientName: qc || null,
+    details: `Client History page — ${qt ? `ticket "${qt}"` : ""}${qt && qc ? ", " : ""}${qc ? `client "${qc}"` : ""}${!qt && !qc ? "(no filters — full list viewed)" : ""}.` });
+});
+document.getElementById("ch-search-client").addEventListener("input", renderChHistory);
+document.getElementById("ch-search-ticket").addEventListener("input", renderChHistory);
+document.getElementById("ch-search-clear-btn").addEventListener("click", function(){
+  document.getElementById("ch-search-ticket").value = "";
+  document.getElementById("ch-search-client").value = "";
+  renderChHistory();
+});
+
+function openClientHistoryDetail(id){
+  const tickets = getTickets().map(getTicketSafe);
+  const t = tickets.find(x=>x.id===id);
+  if(!t) return;
+  currentChdId = id;
+  renderChdBody(t, tickets);
+  document.getElementById("chd-modal").classList.remove("hidden");
+}
+document.getElementById("chd-modal-close").addEventListener("click", ()=> document.getElementById("chd-modal").classList.add("hidden"));
+document.getElementById("chd-modal").addEventListener("click", function(e){ if(e.target === this) this.classList.add("hidden"); });
+
+function renderChdBody(t, allTickets){
+  const timeline = allTickets
+    .filter(x=> x.clientName.trim().toLowerCase() === t.clientName.trim().toLowerCase())
+    .sort((a,b)=> a.createdAt - b.createdAt);
+
+  const shots = t.attachments.screenshots || [];
+  const voices = t.attachments.voiceNotes || [];
+
+  document.getElementById("chd-body").innerHTML = `
+    <div class="detail-row"><span class="k">Ticket Number</span><span class="v mono">${t.id}</span></div>
+    <div class="detail-row"><span class="k">Status</span><span class="v">${statusBadge(t.status)}</span></div>
+    <div class="detail-row"><span class="k">Client Name</span><span class="v">${escapeHtml(t.clientName)}</span></div>
+    <div class="detail-row"><span class="k">Contact Number</span><span class="v">${escapeHtml(t.contactNumber)}</span></div>
+    <div class="detail-row"><span class="k">Site / Location</span><span class="v">${escapeHtml(t.siteName)} / ${escapeHtml(t.location)}</span></div>
+    <div class="detail-row"><span class="k">Device / Serial</span><span class="v">${escapeHtml(t.deviceModel)} — ${escapeHtml(t.serialNumber)}</span></div>
+    <div class="detail-row"><span class="k">Ticket Started</span><span class="v">${t.date}</span></div>
+    <div class="detail-row"><span class="k">Ticket Closed</span><span class="v">${t.resolution ? t.resolution.resolvedDate : "Still open"}</span></div>
+    <div class="detail-row block"><span class="k">Issue in Details</span><span class="v">${escapeHtml(t.issueDetails)}</span></div>
+    ${t.resolution ? `<div class="detail-row block"><span class="k">How it was Resolved</span><span class="v">${escapeHtml(t.resolution.details)}</span></div>` : ""}
+    ${t.previousTicketRef ? `<div class="detail-row"><span class="k">Linked to Previous Ticket</span><span class="v"><button class="icon-btn" onclick="openClientHistoryDetail('${t.previousTicketRef}')">${t.previousTicketRef} — View</button></span></div>` : ""}
+    ${t.status === "Close" ? `<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button type="button" class="btn ghost" onclick="reopenTicket('${t.id}')">Reopen This Ticket</button>
+      <button type="button" class="btn" onclick="startNewLinkedTicket('${t.id}')">Start New Ticket for This Client</button>
+    </div>` : `<div style="margin-top:14px;">
+      <button type="button" class="btn ghost" onclick="startNewLinkedTicket('${t.id}')">Start New Ticket for This Client</button>
+    </div>`}
+    ${(t.reopenHistory && t.reopenHistory.length) ? `
+    <div class="chd-section-title">Reopen History <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">${t.reopenHistory.length} time(s) reopened</span></div>
+    ${t.reopenHistory.map((r,i)=>`
+      <div class="detail-row block" style="border-bottom:1px dashed var(--border);">
+        <span class="k">Previous resolution (before reopen on ${r.reopenedOn})</span>
+        <span class="v">${escapeHtml(r.previousResolution.details)} <span class="ref-tag">— resolved ${r.previousResolution.resolvedDate}</span></span>
+      </div>`).join("")}
+    ` : ""}
+
+    <div class="chd-section-title">Client Ticket Timeline <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">${timeline.length} ticket(s) total for this client</span></div>
+    <div class="timeline-strip">
+      ${timeline.map(x=>`<span class="timeline-chip ${x.id===t.id ? 'current' : ''}" onclick="openClientHistoryDetail('${x.id}')">${x.id} · ${x.status} · ${x.date}</span>`).join("")}
+    </div>
+
+    <div class="chd-section-title">WhatsApp Chat Log <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">paste conversation text as proof of contact</span></div>
+    <textarea id="chd-chatlog" placeholder="Paste the WhatsApp conversation text here (client messages, timestamps, etc.)...">${escapeHtml(t.attachments.chatLog || "")}</textarea>
+    <div class="form-actions" style="margin-top:10px;">
+      <button type="button" class="btn" id="chd-save-chatlog-btn">Save Chat Log</button>
+    </div>
+
+    <div class="chd-section-title">Screenshots <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">WhatsApp chat screenshots</span></div>
+    <div class="upload-row">
+      <label class="upload-label">📎 Upload Screenshot(s)
+        <input type="file" id="chd-screenshot-input" accept="image/*" multiple>
+      </label>
+      <div class="paste-zone" id="chd-paste-zone" tabindex="0">📋 Or copy an image and press <kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere here to paste it in directly</div>
+    </div>
+    <div class="shot-grid" id="chd-screenshots-grid">
+      ${shots.length ? shots.map(s=>`
+        <div class="shot-card">
+          <img src="${s.dataUrl}" onclick="openLightbox('${s.dataUrl}')" alt="${escapeHtml(s.name)}">
+          <div class="shot-name">${escapeHtml(s.name)}</div>
+          <button type="button" class="shot-del" onclick="removeAttachment('${t.id}','screenshots','${s.id}')">&times;</button>
+        </div>`).join("") : `<span class="no-attach">No screenshots uploaded yet.</span>`}
+    </div>
+
+    <div class="chd-section-title">Voice Notes <span class="tag" style="font-size:11px; color:var(--text-faint); font-weight:600;">WhatsApp voice message recordings</span></div>
+    <div class="upload-row">
+      <label class="upload-label">🎙️ Upload Voice Note(s)
+        <input type="file" id="chd-voice-input" accept="audio/*" multiple>
+      </label>
+    </div>
+    <div id="chd-voice-list">
+      ${voices.length ? voices.map(v=>`
+        <div class="voice-item">
+          <span class="vname">${escapeHtml(v.name)}</span>
+          <audio controls src="${v.dataUrl}"></audio>
+          <button type="button" class="icon-btn delete" onclick="removeAttachment('${t.id}','voiceNotes','${v.id}')">Delete</button>
+        </div>`).join("") : `<span class="no-attach">No voice notes uploaded yet.</span>`}
+    </div>
+  `;
+
+  document.getElementById("chd-save-chatlog-btn").addEventListener("click", function(){
+    saveChatLog(t.id, document.getElementById("chd-chatlog").value);
+  });
+  document.getElementById("chd-screenshot-input").addEventListener("change", function(e){
+    handleAttachmentUpload(t.id, "screenshots", e.target.files);
+  });
+  document.getElementById("chd-voice-input").addEventListener("change", function(e){
+    handleAttachmentUpload(t.id, "voiceNotes", e.target.files);
+  });
+}
+
+function saveChatLog(ticketId, text){
+  const tickets = getTickets().map(getTicketSafe);
+  const idx = tickets.findIndex(x=>x.id===ticketId);
+  if(idx===-1) return;
+  tickets[idx].attachments.chatLog = text;
+  saveTickets(tickets);
+  showToast("WhatsApp chat log saved.");
+}
+
+function fileToDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleAttachmentUpload(ticketId, kind, fileList){
+  const files = Array.from(fileList || []);
+  if(!files.length) return;
+  const tickets = getTickets().map(getTicketSafe);
+  const idx = tickets.findIndex(x=>x.id===ticketId);
+  if(idx===-1) return;
+  for(const file of files){
+    try{
+      const dataUrl = await fileToDataUrl(file);
+      tickets[idx].attachments[kind].push({
+        id: "att_" + Date.now() + "_" + Math.random().toString(36).slice(2,7),
+        name: file.name,
+        dataUrl: dataUrl
+      });
+    } catch(err){
+      showToast("Could not read file: " + file.name);
+    }
+  }
+  try{
+    saveTickets(tickets);
+    showToast(kind === "screenshots" ? "Screenshot(s) saved as proof." : "Voice note(s) saved as proof.");
+  } catch(err){
+    showToast("Storage limit reached — try smaller files or remove old attachments.");
+    return;
+  }
+  renderChdBody(tickets[idx], tickets);
+}
+
+function removeAttachment(ticketId, kind, attId){
+  const tickets = getTickets().map(getTicketSafe);
+  const idx = tickets.findIndex(x=>x.id===ticketId);
+  if(idx===-1) return;
+  tickets[idx].attachments[kind] = tickets[idx].attachments[kind].filter(a=>a.id!==attId);
+  saveTickets(tickets);
+  showToast("Attachment removed.");
+  renderChdBody(tickets[idx], tickets);
+}
+
+function openLightbox(src){
+  document.getElementById("lightbox-img").src = src;
+  document.getElementById("lightbox-overlay").classList.remove("hidden");
+}
+document.getElementById("lightbox-overlay").addEventListener("click", function(){
+  this.classList.add("hidden");
+  document.getElementById("lightbox-img").src = "";
+});
+
+/* Paste (Ctrl+V) support — lets the engineer paste a copied WhatsApp screenshot straight in,
+   without needing to save it to disk first. The image is stored as its own data copy in
+   localStorage, so it stays attached to the ticket even if the original file/image on the
+   laptop is later deleted or moved. */
+document.addEventListener("paste", function(e){
+  const modal = document.getElementById("chd-modal");
+  if(!modal || modal.classList.contains("hidden") || !currentChdId) return;
+  const items = (e.clipboardData || window.clipboardData) ? (e.clipboardData || window.clipboardData).items : null;
+  if(!items) return;
+  const pastedFiles = [];
+  for(const item of items){
+    if(item.type && item.type.indexOf("image") !== -1){
+      const file = item.getAsFile();
+      if(file) pastedFiles.push(file);
+    }
+  }
+  if(pastedFiles.length){
+    e.preventDefault();
+    handleAttachmentUpload(currentChdId, "screenshots", pastedFiles);
+  }
+});
+
+/* ===================== RESOLVE ISSUE ===================== */
+let currentResolveId = null;
+
+function renderOpenTicketChips(){
+  const tickets = getTickets().filter(t=> t.status==="Pending" || t.status==="Start");
+  const wrap = document.getElementById("open-tickets-chips");
+  wrap.innerHTML = tickets.length ? tickets.map(t=>`<span class="chip" onclick="loadResolveTicket('${t.id}')">${t.id} · ${escapeHtml(t.status)}</span>`).join("")
+    : `<span class="chip" style="cursor:default">No open tickets</span>`;
+}
+
+document.getElementById("resolve-load-btn").addEventListener("click", function(){
+  const id = document.getElementById("resolve-ticket-input").value.trim();
+  loadResolveTicket(id);
+});
+
+function loadResolveTicket(id){
+  const tickets = getTickets();
+  const t = tickets.find(x=> x.id.toLowerCase() === id.toLowerCase());
+  if(!t){
+    showToast("Ticket number not found.");
+    return;
+  }
+  currentResolveId = t.id;
+  document.getElementById("resolve-ticket-id").textContent = t.id;
+  const rIssue = document.getElementById("r-issue");
+  rIssue.value = t.issueDetails;
+  rIssue.readOnly = true;
+  document.getElementById("r-issue-edit-btn").textContent = "Edit";
+  document.getElementById("r-solution").value = t.resolution ? t.resolution.details : "";
+  document.getElementById("resolve-ticket-input").value = t.id;
+  document.getElementById("resolve-form-card").classList.remove("hidden");
+}
+
+document.getElementById("r-issue-edit-btn").addEventListener("click", function(){
+  const ta = document.getElementById("r-issue");
+  ta.readOnly = !ta.readOnly;
+  this.textContent = ta.readOnly ? "Edit" : "Done";
+  if(!ta.readOnly) ta.focus();
+});
+
+document.getElementById("resolve-form").addEventListener("submit", function(e){
+  e.preventDefault();
+  if(!currentResolveId) return;
+  const tickets = getTickets();
+  const idx = tickets.findIndex(x=> x.id === currentResolveId);
+  if(idx === -1) return;
+  tickets[idx].issueDetails = document.getElementById("r-issue").value.trim();
+  tickets[idx].status = "Close";
+  tickets[idx].resolution = {
+    details: document.getElementById("r-solution").value.trim(),
+    resolvedDate: new Date().toISOString().slice(0,10)
+  };
+  saveTickets(tickets);
+  showToast(`Ticket ${currentResolveId} marked as resolved and closed.`);
+  addLog("Close Ticket", { ticketId: currentResolveId, clientName: tickets[idx].clientName, serialNumber: tickets[idx].serialNumber,
+    details: `Ticket resolved and closed via Resolve Issue workflow.` });
+  document.getElementById("resolve-form-card").classList.add("hidden");
+  document.getElementById("resolve-ticket-input").value = "";
+  currentResolveId = null;
+  renderOpenTicketChips();
+  renderClosedHistory();
+});
+
+document.getElementById("resolve-cancel-btn").addEventListener("click", function(){
+  document.getElementById("resolve-form-card").classList.add("hidden");
+  currentResolveId = null;
+});
+
+/* ===================== CLOSED TICKETS HISTORY (search past issues) ===================== */
+function renderClosedHistory(){
+  const query = document.getElementById("history-search-input").value.trim().toLowerCase();
+  let closed = getTickets().filter(t=> t.status === "Close");
+  if(query){
+    closed = closed.filter(t=>{
+      const haystack = (t.issueDetails + " " + (t.resolution ? t.resolution.details : "")).toLowerCase();
+      return haystack.includes(query);
+    });
+  }
+  closed.sort((a,b)=> (b.resolution ? b.resolution.resolvedDate : "").localeCompare(a.resolution ? a.resolution.resolvedDate : ""));
+  const body = document.getElementById("history-results-body");
+  body.innerHTML = closed.length ? closed.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.clientName)}</td>
+      <td>${escapeHtml(t.siteName)}</td>
+      <td>${t.resolution ? t.resolution.resolvedDate : "—"}</td>
+      <td>
+        <div class="row-actions">
+          <button class="icon-btn" onclick="openDetail('${t.id}')">View</button>
+          <button class="icon-btn edit" onclick="reopenTicket('${t.id}')">Reopen</button>
+        </div>
+      </td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="5">${query ? "No matching closed tickets for this wording." : "No closed tickets yet."}</td></tr>`;
+}
+document.getElementById("history-search-input").addEventListener("input", renderClosedHistory);
+document.getElementById("history-search-clear").addEventListener("click", function(){
+  document.getElementById("history-search-input").value = "";
+  renderClosedHistory();
+});
+
+/* ===================== REPORT ===================== */
+let reportMode = "month";
+
+document.querySelectorAll(".rf-tab").forEach(tab=>{
+  tab.addEventListener("click", function(){
+    document.querySelectorAll(".rf-tab").forEach(t=>t.classList.remove("active"));
+    this.classList.add("active");
+    reportMode = this.dataset.mode;
+    document.getElementById("report-controls-month").classList.toggle("hidden", reportMode !== "month");
+    document.getElementById("report-controls-range").classList.toggle("hidden", reportMode !== "range");
+  });
+});
+
+function getReportData(){
+  let closed = getTickets().filter(t=> t.status === "Close" && t.resolution);
+  if(reportMode === "month"){
+    const m = document.getElementById("rep-month").value; // "YYYY-MM"
+    if(m) closed = closed.filter(t=> t.date.slice(0,7) === m || t.resolution.resolvedDate.slice(0,7) === m);
+  } else if(reportMode === "range"){
+    const from = document.getElementById("rep-date-from").value;
+    const to = document.getElementById("rep-date-to").value;
+    if(from) closed = closed.filter(t=> t.resolution.resolvedDate >= from);
+    if(to) closed = closed.filter(t=> t.resolution.resolvedDate <= to);
+  }
+  closed.sort((a,b)=> a.resolution.resolvedDate.localeCompare(b.resolution.resolvedDate));
+  return closed;
+}
+
+function renderReport(){
+  const data = getReportData();
+  document.getElementById("rep-count").textContent = data.length;
+  const body = document.getElementById("report-results-body");
+  body.innerHTML = data.length ? data.map(t=>`
+    <tr>
+      <td class="mono">${t.id}</td>
+      <td>${escapeHtml(t.clientName)}</td>
+      <td>${escapeHtml(t.siteName)}</td>
+      <td>${t.date}</td>
+      <td>${t.resolution.resolvedDate}</td>
+      <td>${statusBadge(t.status)}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="6">No closed tickets found for this selection.</td></tr>`;
+}
+
+document.getElementById("report-generate-btn").addEventListener("click", renderReport);
+
+document.getElementById("report-download-btn").addEventListener("click", function(){
+  const data = getReportData();
+  let rangeLabel = "All closed tickets";
+  if(reportMode === "month"){
+    const m = document.getElementById("rep-month").value;
+    rangeLabel = m ? ("Month: " + m) : "Month: (not selected)";
+  } else if(reportMode === "range"){
+    const from = document.getElementById("rep-date-from").value || "—";
+    const to = document.getElementById("rep-date-to").value || "—";
+    rangeLabel = `Date range: ${from} to ${to}`;
+  }
+  const rows = data.map(t=>`
+    <tr>
+      <td>${t.id}</td><td>${escapeHtml(t.clientName)}</td><td>${escapeHtml(t.siteName)}</td>
+      <td>${t.date}</td><td>${t.resolution.resolvedDate}</td><td>${printBadge(t.status)}</td>
+    </tr>`).join("");
+  const table = `
+    <table class="print-table">
+      <thead><tr><th>Ticket #</th><th>Client</th><th>Site</th><th>Start Date</th><th>End Date</th><th>Status</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No closed tickets found for this selection.</td></tr>'}</tbody>
+    </table>
+  `;
+  const html = buildLetterhead("Closed Tickets Report", `${rangeLabel} · ${data.length} ticket(s) · Generated ${new Date().toLocaleDateString('en-GB')}`) + table;
+  runPrint(html);
+  addLog("Export Report", { details: `Closed-ticket report printed/exported — ${rangeLabel}, ${data.length} ticket(s).` });
+});
+
+/* ===================== LOGS PAGE ===================== */
+function getFilteredLogs(){
+  const qTicket = document.getElementById("lg-ticket").value.trim().toLowerCase();
+  const qClient = document.getElementById("lg-client").value.trim().toLowerCase();
+  const qSerial = document.getElementById("lg-serial").value.trim().toLowerCase();
+  const action = document.getElementById("lg-action").value;
+  const dFrom = document.getElementById("lg-date-from").value;
+  const dTo = document.getElementById("lg-date-to").value;
+
+  let logs = getLogs();
+  if(qTicket) logs = logs.filter(l=> (l.ticketId||"").toLowerCase().includes(qTicket));
+  if(qClient) logs = logs.filter(l=> (l.clientName||"").toLowerCase().includes(qClient));
+  if(qSerial) logs = logs.filter(l=> (l.serialNumber||"").toLowerCase().includes(qSerial));
+  if(action !== "All") logs = logs.filter(l=> l.action === action);
+  if(dFrom) logs = logs.filter(l=> l.dateStr >= dFrom);
+  if(dTo) logs = logs.filter(l=> l.dateStr <= dTo);
+  logs.sort((a,b)=> b.timestamp - a.timestamp);
+  return logs;
+}
+
+function renderLogs(){
+  const logs = getFilteredLogs();
+  document.getElementById("lg-count").textContent = logs.length;
+  const body = document.getElementById("lg-results-body");
+  body.innerHTML = logs.length ? logs.map(l=>`
+    <tr>
+      <td class="log-time">${new Date(l.timestamp).toLocaleString('en-GB')}</td>
+      <td>${logBadge(l.action)}</td>
+      <td class="mono">${l.ticketId || "—"}</td>
+      <td>${l.clientName ? escapeHtml(l.clientName) : "—"}</td>
+      <td class="mono">${l.serialNumber ? escapeHtml(l.serialNumber) : "—"}</td>
+      <td class="log-details">${escapeHtml(l.details)}</td>
+    </tr>`).join("") : `<tr class="empty-row"><td colspan="6">No log entries match this search.</td></tr>`;
+}
+
+document.getElementById("lg-search-btn").addEventListener("click", renderLogs);
+document.getElementById("lg-action").addEventListener("change", renderLogs);
+document.getElementById("lg-clear-btn").addEventListener("click", function(){
+  document.getElementById("lg-ticket").value = "";
+  document.getElementById("lg-client").value = "";
+  document.getElementById("lg-serial").value = "";
+  document.getElementById("lg-action").value = "All";
+  document.getElementById("lg-date-from").value = "";
+  document.getElementById("lg-date-to").value = "";
+  renderLogs();
+});
+
+document.getElementById("lg-export-csv-btn").addEventListener("click", function(){
+  const logs = getFilteredLogs();
+  const header = ["Date & Time","Action","Ticket Number","Client Name","Serial Number","Details"];
+  const csvRows = [header.join(",")];
+  logs.forEach(l=>{
+    const row = [
+      new Date(l.timestamp).toLocaleString('en-GB'),
+      l.action,
+      l.ticketId || "",
+      l.clientName || "",
+      l.serialNumber || "",
+      (l.details || "").replace(/"/g, '""')
+    ];
+    csvRows.push(row.map(v=> `"${v}"`).join(","));
+  });
+  const csv = csvRows.join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `netops-activity-logs-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${logs.length} log entries to CSV.`);
+});
+
+document.getElementById("lg-print-btn").addEventListener("click", function(){
+  const logs = getFilteredLogs();
+  const rows = logs.map(l=>`
+    <tr>
+      <td>${new Date(l.timestamp).toLocaleString('en-GB')}</td>
+      <td>${l.action}</td>
+      <td>${l.ticketId || "—"}</td>
+      <td>${escapeHtml(l.clientName || "—")}</td>
+      <td>${escapeHtml(l.serialNumber || "—")}</td>
+      <td>${escapeHtml(l.details)}</td>
+    </tr>`).join("");
+  const table = `
+    <table class="print-table">
+      <thead><tr><th>Date &amp; Time</th><th>Action</th><th>Ticket #</th><th>Client</th><th>Serial #</th><th>Details</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No log entries match this search.</td></tr>'}</tbody>
+    </table>
+  `;
+  const html = buildLetterhead("Activity Log Report", `${logs.length} entr${logs.length===1?'y':'ies'} · Generated ${new Date().toLocaleDateString('en-GB')}`) + table;
+  runPrint(html);
+});
+
+/* ===================== BACKUP & RESTORE ===================== */
+function exportFullBackup(){
+  const backup = {
+    app: "NetOps Console — Ticket Management System",
+    backupVersion: 1,
+    exportedAt: new Date().toISOString(),
+    data: {
+      [TICKETS_KEY]: localStorage.getItem(TICKETS_KEY),
+      [COUNTER_KEY]: localStorage.getItem(COUNTER_KEY),
+      [LOGS_KEY]: localStorage.getItem(LOGS_KEY)
+    }
+  };
+
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `netops-console-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("Full backup exported successfully.");
+}
+
+function restoreFullBackup(file){
+  if(!file) return;
+  const reader = new FileReader();
+
+  reader.onload = function(){
+    try{
+      const backup = JSON.parse(reader.result);
+      const data = backup && backup.data;
+
+      if(!data || !Object.prototype.hasOwnProperty.call(data, TICKETS_KEY) ||
+         !Object.prototype.hasOwnProperty.call(data, COUNTER_KEY) ||
+         !Object.prototype.hasOwnProperty.call(data, LOGS_KEY)){
+        throw new Error("This file is not a valid NetOps Console backup.");
+      }
+
+      const tickets = data[TICKETS_KEY] === null ? [] : JSON.parse(data[TICKETS_KEY]);
+      const logs = data[LOGS_KEY] === null ? [] : JSON.parse(data[LOGS_KEY]);
+      const counter = data[COUNTER_KEY] === null ? "0" : String(data[COUNTER_KEY]);
+
+      if(!Array.isArray(tickets) || !Array.isArray(logs) || !/^\d+$/.test(counter)){
+        throw new Error("Backup data is invalid or damaged.");
+      }
+
+      if(!confirm("Restore this backup? Current tickets and activity logs in this browser will be replaced.")){
+        document.getElementById("backup-import-file").value = "";
+        return;
+      }
+
+      localStorage.setItem(TICKETS_KEY, JSON.stringify(tickets));
+      localStorage.setItem(COUNTER_KEY, counter);
+      localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+
+      showToast("Backup restored successfully. Refreshing system...");
+      setTimeout(function(){ window.location.reload(); }, 900);
+    }catch(error){
+      alert("Unable to restore backup: " + error.message);
+    }finally{
+      document.getElementById("backup-import-file").value = "";
+    }
+  };
+
+  reader.onerror = function(){
+    alert("Unable to read the selected backup file.");
+    document.getElementById("backup-import-file").value = "";
+  };
+
+  reader.readAsText(file);
+}
+
+document.getElementById("backup-export-btn").addEventListener("click", exportFullBackup);
+document.getElementById("backup-import-btn").addEventListener("click", function(){
+  document.getElementById("backup-import-file").click();
+});
+document.getElementById("backup-import-file").addEventListener("change", function(){
+  if(this.files && this.files[0]) restoreFullBackup(this.files[0]);
+});
+
+/* ===================== INIT ===================== */
+function initApp(){
+  tickClock();
+  renderDashboard();
+}
+
+/* The app intentionally does NOT auto-login — the login screen is shown by default
+   and stays until valid credentials are submitted (see login-form submit handler above). */
+</script>
+</body>
+</html>
